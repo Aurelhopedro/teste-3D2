@@ -1,0 +1,77 @@
+name: BPY City - High Quality Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Seed da geração (mesmo seed = mesma cidade)"
+        required: true
+        default: "42"
+      grid_size:
+        description: "Tamanho da cidade em blocos por lado"
+        required: true
+        default: "8"
+
+permissions:
+  contents: read
+
+jobs:
+  generate-city:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout do repositório de destino
+        uses: actions/checkout@v4
+
+      - name: Instalar Blender 5.0
+        uses: bradyajohnston/setup-blender@v5
+        with:
+          version: "5.0"
+
+      - name: Obter o motor BPY-City original
+        run: |
+          git clone --depth 1 https://github.com/bowber/bpy-city.git /tmp/bpy-city-engine
+          test -f /tmp/bpy-city-engine/main.py
+          test -f /tmp/bpy-city-engine/generators/city.py
+          echo "Estrutura do motor:"
+          find /tmp/bpy-city-engine/assets -type f 2>/dev/null | head -40 || true
+          echo "Quantidade de ficheiros de assets:"
+          find /tmp/bpy-city-engine/assets -type f 2>/dev/null | wc -l
+
+      - name: Verificar assets necessários
+        run: |
+          COUNT=$(find /tmp/bpy-city-engine/assets -type f \( -iname '*.glb' -o -iname '*.gltf' \) 2>/dev/null | wc -l)
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::O repositório BPY-City não contém modelos GLB/GLTF. A geração com assets reais não pode continuar."
+            exit 1
+          fi
+          echo "Encontrados $COUNT modelos 3D."
+
+      - name: Gerar cidade, ficheiro Blender, GLB e render
+        env:
+          CITY_SEED: ${{ inputs.seed }}
+          CITY_GRID_SIZE: ${{ inputs.grid_size }}
+        run: |
+          mkdir -p output
+          blender --background --factory-startup --python scripts/bpy_city_build.py -- \
+            --engine /tmp/bpy-city-engine \
+            --output output \
+            --seed "$CITY_SEED" \
+            --grid "$CITY_GRID_SIZE"
+
+      - name: Listar resultados e tamanhos
+        if: always()
+        run: |
+          echo "=== Ficheiros produzidos ==="
+          find output -maxdepth 2 -type f -printf '%p %k KB\n' 2>/dev/null || true
+
+      - name: Guardar cidade e imagens como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BPY-City
+          path: output/
+          if-no-files-found: warn
+          compression-level: 1
+          retention-days: 14
