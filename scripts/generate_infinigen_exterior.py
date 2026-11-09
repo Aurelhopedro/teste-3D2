@@ -12,7 +12,6 @@ import json
 import time
 import math
 import pathlib
-import subprocess
 
 WORKSPACE  = pathlib.Path(os.environ.get("GITHUB_WORKSPACE", "/workspace"))
 OUTPUT_DIR = WORKSPACE / "output"
@@ -59,7 +58,6 @@ def count_scene():
 
 # ── 1. try Infinigen ────────────────────────────────────────────────────
 log("Step 1 — checking Infinigen availability")
-
 INFINIGEN_DIR = WORKSPACE / "infinigen"
 infinigen_ok  = False
 
@@ -128,7 +126,8 @@ if not infinigen_ok:
         vert.co.z = height
     bm.to_mesh(terrain_obj.data)
     bm.free()
-    terrain_obj.data.calc_normals()
+    # NOTE: calc_normals() removed in Blender 4.x — use normals_split_custom_set instead
+    terrain_obj.data.update()
 
     # Terrain material (grass/earth)
     mat_ground = bpy.data.materials.new("GroundMat")
@@ -148,7 +147,6 @@ if not infinigen_ok:
     bsdf_w = mat_water.node_tree.nodes["Principled BSDF"]
     bsdf_w.inputs["Base Color"].default_value  = (0.1, 0.3, 0.6, 1)
     bsdf_w.inputs["Roughness"].default_value   = 0.05
-    bsdf_w.inputs["Specular IOR Level"].default_value = 0.9
     river.data.materials.append(mat_water)
 
     # ── Rocks ───────────────────────────────────────────────────────
@@ -181,14 +179,12 @@ if not infinigen_ok:
     tree_positions = [(rng.uniform(-28, 28), rng.uniform(-28, 28)) for _ in range(25)]
     for i, (tx, ty) in enumerate(tree_positions):
         h = rng.uniform(2.5, 5.0)
-        # trunk
         bpy.ops.mesh.primitive_cylinder_add(
             radius=0.18, depth=h, location=(tx, ty, h/2)
         )
         trunk = bpy.context.object
         trunk.name = f"Tree_{i}_Trunk"
         trunk.data.materials.append(mat_trunk)
-        # canopy
         bpy.ops.mesh.primitive_ico_sphere_add(
             radius=rng.uniform(0.9, 1.6),
             subdivisions=2,
@@ -207,8 +203,7 @@ if not infinigen_ok:
     mat_roof.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.18, 0.08, 1)
 
     buildings = [
-        # (x, y, w, d, h)  — simple medieval houses
-        ( 0,  0, 3, 3, 4),   # keep
+        ( 0,  0, 3, 3, 4),
         ( 5,  3, 2, 2, 2.5),
         (-4,  4, 2, 2, 2.5),
         ( 4, -4, 2, 2, 2.5),
@@ -222,7 +217,6 @@ if not infinigen_ok:
         building.name  = f"Building_{i}"
         building.scale = (bw, bd, bh)
         building.data.materials.append(mat_stone)
-        # roof prism (scaled cube)
         bpy.ops.mesh.primitive_cube_add(size=1, location=(bx, by, bh + 0.5))
         roof = bpy.context.object
         roof.name  = f"Roof_{i}"
