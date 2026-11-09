@@ -1,0 +1,41 @@
+name: "Unity — Step 0: Get Activation File"
+
+# ─────────────────────────────────────────────────────────────────────────
+# PURPOSE
+# Run this workflow FIRST, before "unity-first-launch.yml".
+# It generates a .alf file that you must upload to license.unity3d.com
+# to obtain your .ulf license file, which is then stored as UNITY_LICENSE.
+#
+# HOW TO USE
+# 1. Run this workflow manually (workflow_dispatch).
+# 2. Download the artifact "activation-file" — extract the .alf file.
+# 3. Go to https://license.unity3d.com and upload the .alf file.
+# 4. Download the .ulf file they give you.
+# 5. In your GitHub repo → Settings → Secrets → Actions, create:
+#      UNITY_LICENSE   = paste the full contents of the .ulf file
+#      UNITY_EMAIL     = your Unity account email
+#      UNITY_PASSWORD  = your Unity account password
+# 6. Now run "unity-first-launch.yml".
+# ─────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+
+jobs:
+  activation:
+    name: Request activation file (.alf)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Request manual activation file
+        id: getManualLicenseFile
+        uses: game-ci/unity-request-activation-file@v2
+        with:
+          unityVersion: 2022.3.57f1
+
+      - name: Upload activation file as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: activation-file
+          path: ${{ steps.getManualLicenseFile.outputs.filePath }}
+          retention-days: 1
