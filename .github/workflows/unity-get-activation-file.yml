@@ -2,52 +2,40 @@ name: "Unity — Step 0: Verify Activation"
 
 # ─────────────────────────────────────────────────────────────────────────
 # PURPOSE
-# Verify that Unity can be activated using your credentials.
-# The old .alf / .ulf manual method is deprecated for Personal licenses.
-# The current method uses UNITY_EMAIL + UNITY_PASSWORD directly.
+# Verify that Unity Personal license can be activated using only
+# email + password, without Unity Hub or .ulf file.
 #
 # PRE-REQUISITES
-# Add these 2 secrets in: Settings → Secrets → Actions
-#
-#   UNITY_EMAIL     → email da tua conta Unity
-#   UNITY_PASSWORD  → password da tua conta Unity
+# Settings → Secrets → Actions → add:
+#   UNITY_EMAIL     → email da conta Unity
+#   UNITY_PASSWORD  → password da conta Unity
 #
 # HOW TO USE
-# 1. Add the secrets above.
+# 1. Add the 2 secrets above.
 # 2. Run this workflow manually (workflow_dispatch).
-# 3. If it shows ✅ SUCCESS — activation works. Proceed to Test 01.
+# 3. If ✅ SUCCESS → proceed to unity-first-launch.yml
 # ─────────────────────────────────────────────────────────────────────────
 
 on:
   workflow_dispatch:
 
-env:
-  UNITY_VERSION: 2022.3.57f1
-
 jobs:
   verify-activation:
-    name: Verify Unity Activation
+    name: Verify Unity Personal License
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Write minimal Unity project fixture
-        run: |
-          mkdir -p TestProject/ProjectSettings
-          cat > TestProject/ProjectSettings/ProjectVersion.txt << 'EOF'
-          m_EditorVersion: 2022.3.57f1
-          m_EditorVersionWithRevision: 2022.3.57f1 (0)
-          EOF
+      - name: Activate Unity Personal License
+        uses: RageAgainstThePixel/activate-unity-license@v2
+        with:
+          license: 'Personal'
+          username: ${{ secrets.UNITY_EMAIL }}
+          password: ${{ secrets.UNITY_PASSWORD }}
 
-      - name: Activate Unity (Personal License)
-        uses: game-ci/unity-activate@v2
-        env:
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
-      - name: Report result
+      - name: Report SUCCESS
         run: |
           echo ""
           echo "╔══════════════════════════════════════════╗"
