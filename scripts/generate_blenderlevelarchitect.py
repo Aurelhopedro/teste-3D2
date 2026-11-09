@@ -3,6 +3,8 @@ AXEV Medieval Settlement — BlenderLevelArchitect Headless Generator
 Runs inside Blender --background, installs the add-on from the cloned
 repo's dist/ folder, generates a full multi-floor dungeon/level with
 rooms, corridors, walls, stairs, doors, and props, then exports GLB.
+
+ORDER: build scene → export GLB → renders (renders are best-effort)
 """
 
 import bpy
@@ -51,7 +53,6 @@ def render_png(filepath, resolution=(1280, 720)):
     scene.render.resolution_x        = resolution[0]
     scene.render.resolution_y        = resolution[1]
     scene.render.resolution_percentage = 100
-    # Workbench lighting — works without GPU
     scene.display.shading.light      = "MATCAP"
     scene.display.shading.color_type = "MATERIAL"
     bpy.ops.render.render(write_still=True)
@@ -62,9 +63,7 @@ def count_scene():
     polys = sum(len(o.data.polygons) for o in objs)
     return len(objs), polys
 
-# ── 1. fresh scene FIRST (before add-on install) ────────────────────────
-# IMPORTANT: read_factory_settings resets all add-ons, so we must
-# do it BEFORE installing, not after.
+# ── 1. fresh scene FIRST ────────────────────────────────────────────────
 log("Step 1 — preparing fresh scene")
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
@@ -79,7 +78,6 @@ addon_ok = False
 if ADDON_ZIP:
     try:
         bpy.ops.preferences.addon_install(filepath=str(ADDON_ZIP), overwrite=True)
-        # The zip may package the module under different names; try both.
         for module_name in ("game_level_architect", "levelArchitect_v2", "BlenderLevelArchitect"):
             if module_name in bpy.context.preferences.addons:
                 addon_ok = True
@@ -95,12 +93,11 @@ if ADDON_ZIP:
                 continue
         bpy.ops.wm.save_userpref()
         if not addon_ok:
-            log("  WARNING: installed zip but could not enable any known module name")
+            log("  WARNING: could not enable any known module name")
     except Exception as e:
         log(f"  zip install failed: {e}")
 
 if not addon_ok:
-    # fall back: load source file directly
     src_py = BLA_DIR / "levelArchitect_v2.py"
     if src_py.exists():
         import importlib.util
@@ -114,73 +111,47 @@ if not addon_ok:
         except Exception as e:
             log(f"  source load failed: {e}")
     else:
-        log("  WARNING: add-on not found — will generate a fallback scene")
+        log("  WARNING: add-on not found — will use fallback scene")
 
 # ── 3. generate level ───────────────────────────────────────────────────
-log("Step 3 — generating level with BlenderLevelArchitect")
+log("Step 3 — generating level")
 
 if addon_ok and "game_level_architect" in bpy.context.preferences.addons:
     bpy.ops.object.select_all(action="DESELECT")
-
     try:
-        # --- Blueprint (Step 1) ---
         bpy.ops.gla.generate_blueprint(
-            map_width=12,
-            map_height=12,
-            num_floors=2,
-            min_rooms=6,
-            max_rooms=10,
-            corridor_width=1,
-            use_random_seed=True,
+            map_width=12, map_height=12, num_floors=2,
+            min_rooms=6, max_rooms=10, corridor_width=1, use_random_seed=True,
         )
         log("  blueprint generated")
-
-        # --- Walls (Step 2) ---
         bpy.ops.gla.generate_walls(wall_height=3.0, per_floor=True)
         log("  walls generated")
-
-        # --- Stairs (Step 3) ---
         bpy.ops.gla.generate_stairs(stair_type="STEPPED")
         log("  stairs generated")
-
-        # --- Doors (Step 4) ---
         bpy.ops.gla.generate_doors(generate_panels=True)
         log("  doors generated")
-
-        # --- Props (Step 5) ---
-        bpy.ops.gla.generate_props(
-            torch_density=0.4,
-            crate_density=0.3,
-        )
+        bpy.ops.gla.generate_props(torch_density=0.4, crate_density=0.3)
         log("  props generated")
-
         report["method"] = "BlenderLevelArchitect_addon"
-
     except Exception as e:
         log(f"  add-on operator failed: {e} — building fallback scene")
         addon_ok = False
 
 if not addon_ok:
-    # ── Fallback: hand-built medieval dungeon ──────────────────────────
     log("  building fallback procedural dungeon")
     report["method"] = "fallback_procedural"
 
-    import random, mathutils
+    import random
     rng = random.Random(42)
 
-    # Ground plane
     bpy.ops.mesh.primitive_plane_add(size=24, location=(0, 0, 0))
     ground = bpy.context.object
     ground.name = "Ground"
-    mat = bpy.data.materials.new("GroundMat")
-    mat.diffuse_color = (0.3, 0.25, 0.2, 1)
-    ground.data.materials.append(mat)
+    mat_g = bpy.data.materials.new("GroundMat")
+    mat_g.diffuse_color = (0.3, 0.25, 0.2, 1)
+    ground.data.materials.append(mat_g)
 
-    # Room layout: 3×3 grid of rooms
-    room_positions = [
-        (x * 6, y * 6) for x in range(-1, 2) for y in range(-1, 2)
-    ]
-
+    room_positions = [(x * 6, y * 6) for x in range(-1, 2) for y in range(-1, 2)]
     wall_mat = bpy.data.materials.new("WallMat")
     wall_mat.diffuse_color = (0.5, 0.45, 0.4, 1)
     roof_mat = bpy.data.materials.new("RoofMat")
@@ -189,79 +160,57 @@ if not addon_ok:
     for i, (rx, ry) in enumerate(room_positions):
         w = rng.uniform(2.5, 4.0)
         h_room = rng.uniform(2.5, 3.5)
-        # Floor
         bpy.ops.mesh.primitive_plane_add(size=1, location=(rx, ry, 0.01))
         floor = bpy.context.object
         floor.name = f"Room_{i}_Floor"
         floor.scale = (w, w, 1)
-
-        # Walls (4 sides, thin boxes)
         for side, (ox, oy, sx, sy) in enumerate([
-            (0,  w/2, w, 0.15),
-            (0, -w/2, w, 0.15),
-            ( w/2, 0, 0.15, w),
-            (-w/2, 0, 0.15, w),
+            (0, w/2, w, 0.15), (0, -w/2, w, 0.15),
+            (w/2, 0, 0.15, w), (-w/2, 0, 0.15, w),
         ]):
-            bpy.ops.mesh.primitive_cube_add(
-                size=1,
-                location=(rx + ox, ry + oy, h_room / 2)
-            )
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(rx+ox, ry+oy, h_room/2))
             wall = bpy.context.object
             wall.name = f"Room_{i}_Wall_{side}"
             wall.scale = (sx, sy, h_room)
             wall.data.materials.append(wall_mat)
-
-        # Roof
-        bpy.ops.mesh.primitive_cube_add(
-            size=1, location=(rx, ry, h_room + 0.15)
-        )
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(rx, ry, h_room+0.15))
         roof = bpy.context.object
         roof.name = f"Room_{i}_Roof"
-        roof.scale = (w + 0.1, w + 0.1, 0.15)
+        roof.scale = (w+0.1, w+0.1, 0.15)
         roof.data.materials.append(roof_mat)
-
-        # Torch (cylinder + point light)
-        bpy.ops.mesh.primitive_cylinder_add(
-            radius=0.05, depth=0.4,
-            location=(rx + w/2 - 0.3, ry + w/2 - 0.3, h_room - 0.4)
-        )
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.05, depth=0.4,
+            location=(rx+w/2-0.3, ry+w/2-0.3, h_room-0.4))
         torch = bpy.context.object
         torch.name = f"Torch_{i}"
-        bpy.ops.object.light_add(
-            type="POINT",
-            location=(rx + w/2 - 0.3, ry + w/2 - 0.3, h_room - 0.2)
-        )
+        bpy.ops.object.light_add(type="POINT",
+            location=(rx+w/2-0.3, ry+w/2-0.3, h_room-0.2))
         light = bpy.context.object
         light.name = f"TorchLight_{i}"
         light.data.energy = 20
         light.data.color  = (1.0, 0.6, 0.2)
 
-    # Corridors connecting rooms (simple box hallways)
     corr_mat = bpy.data.materials.new("CorrMat")
     corr_mat.diffuse_color = (0.35, 0.3, 0.25, 1)
-    connections = [(0,1),(1,2),(3,4),(4,5),(6,7),(7,8),(0,3),(3,6),(1,4),(4,7),(2,5),(5,8)]
-    for a, b in connections:
+    for a, b in [(0,1),(1,2),(3,4),(4,5),(6,7),(7,8),(0,3),(3,6),(1,4),(4,7),(2,5),(5,8)]:
         ax, ay = room_positions[a]
         bx, by = room_positions[b]
         cx, cy = (ax+bx)/2, (ay+by)/2
-        length = math.dist((ax,ay),(bx,by))
+        length = math.dist((ax, ay), (bx, by))
         angle  = math.atan2(by-ay, bx-ax)
         bpy.ops.mesh.primitive_cube_add(size=1, location=(cx, cy, 0.5))
         corr = bpy.context.object
-        corr.name   = f"Corridor_{a}_{b}"
-        corr.scale  = (length/2, 0.75, 1.0)
+        corr.name = f"Corridor_{a}_{b}"
+        corr.scale = (length/2, 0.75, 1.0)
         corr.rotation_euler[2] = angle
         corr.data.materials.append(corr_mat)
 
-    # Keep-tower (central fortress)
     bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 4))
     keep = bpy.context.object
-    keep.name  = "Keep_Tower"
+    keep.name = "Keep_Tower"
     keep.scale = (2.5, 2.5, 4)
     keep_mat = bpy.data.materials.new("KeepMat")
     keep_mat.diffuse_color = (0.45, 0.4, 0.35, 1)
     keep.data.materials.append(keep_mat)
-
     log("  fallback scene built")
 
 # ── 4. metrics ──────────────────────────────────────────────────────────
@@ -269,7 +218,7 @@ n_obj, n_poly = count_scene()
 log(f"Step 4 — scene: {n_obj} objects, {n_poly} polygons")
 report.update({"objects": n_obj, "polygons": n_poly})
 
-# ── 5. add sun + ambient ─────────────────────────────────────────────────
+# ── 5. lighting ──────────────────────────────────────────────────────────
 log("Step 5 — lighting")
 bpy.ops.object.light_add(type="SUN", location=(10, -10, 20))
 sun = bpy.context.object
@@ -284,41 +233,39 @@ bg = world.node_tree.nodes["Background"]
 bg.inputs[0].default_value = (0.05, 0.05, 0.08, 1)
 bg.inputs[1].default_value = 0.3
 
-# ── 6. renders ──────────────────────────────────────────────────────────
-log("Step 6 — rendering views")
-
-views = [
-    # name,  location,              rotation (rad)
-    ("overview",   (20, -20, 18),  (math.radians(55), 0, math.radians(45))),
-    ("closeup",    ( 5,  -8,  6),  (math.radians(60), 0, math.radians(20))),
-    ("side_angle", (-15,  5, 10),  (math.radians(50), 0, math.radians(-30))),
-]
-
-render_paths = []
-for name, loc, rot in views:
-    set_camera(loc, rot)
-    out = OUTPUT_DIR / f"view_{name}.png"
-    render_png(out)
-    render_paths.append(str(out))
-
-report["renders"] = render_paths
-
-# ── 7. export GLB ────────────────────────────────────────────────────────
-log("Step 7 — exporting GLB")
+# ── 6. export GLB ── BEFORE renders so GLB always exists ────────────────
+log("Step 6 — exporting GLB")
 glb_path = str(OUTPUT_DIR / "AXEV_BlenderLevelArchitect.glb")
-
 bpy.ops.export_scene.gltf(
-    filepath       = glb_path,
-    export_format  = "GLB",
-    export_lights  = True,
+    filepath         = glb_path,
+    export_format    = "GLB",
+    export_lights    = True,
     export_materials = "EXPORT",
-    export_apply   = True,
+    export_apply     = True,
 )
 log(f"  exported → {glb_path}")
-
 glb_size = os.path.getsize(glb_path)
-report["glb_path"] = glb_path
+report["glb_path"]    = glb_path
 report["glb_size_kb"] = round(glb_size / 1024, 1)
+log(f"  GLB size: {report['glb_size_kb']} KB")
+
+# ── 7. renders (best-effort — won't abort the job if they fail) ──────────
+log("Step 7 — rendering views")
+views = [
+    ("overview",   (20, -20, 18), (math.radians(55), 0, math.radians(45))),
+    ("closeup",    ( 5,  -8,  6), (math.radians(60), 0, math.radians(20))),
+    ("side_angle", (-15,  5, 10), (math.radians(50), 0, math.radians(-30))),
+]
+render_paths = []
+for name, loc, rot in views:
+    try:
+        set_camera(loc, rot)
+        out = OUTPUT_DIR / f"view_{name}.png"
+        render_png(out)
+        render_paths.append(str(out))
+    except Exception as e:
+        log(f"  render '{name}' failed (non-fatal): {e}")
+report["renders"] = render_paths
 
 # ── 8. final report ──────────────────────────────────────────────────────
 save_report({
@@ -329,5 +276,4 @@ save_report({
     "floors"  : 2,
     "status"  : "success",
 })
-
 log("Done — all artefacts written to output/")
