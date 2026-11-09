@@ -3,8 +3,7 @@ name: "Unity — Step 0: Get Activation File"
 # ─────────────────────────────────────────────────────────────────────────
 # PURPOSE
 # Run this workflow FIRST, before "unity-first-launch.yml".
-# It generates a .alf file that you must upload to license.unity3d.com
-# to obtain your .ulf license file, which is then stored as UNITY_LICENSE.
+# It generates a .alf file using the Unity Editor directly.
 #
 # HOW TO USE
 # 1. Run this workflow manually (workflow_dispatch).
@@ -21,21 +20,38 @@ name: "Unity — Step 0: Get Activation File"
 on:
   workflow_dispatch:
 
+env:
+  UNITY_VERSION: 2022.3.57f1
+
 jobs:
   activation:
     name: Request activation file (.alf)
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Request manual activation file
-        id: getManualLicenseFile
-        uses: game-ci/unity-request-activation-file@v2
+      - name: Install Unity Editor
+        uses: game-ci/unity-activate@v2
+        id: unity
         with:
-          unityVersion: 2022.3.57f1
+          unityVersion: ${{ env.UNITY_VERSION }}
+
+      - name: Generate activation file (.alf)
+        run: |
+          /opt/unity/editors/${{ env.UNITY_VERSION }}/Editor/Unity \
+            -batchmode \
+            -createManualActivationFile \
+            -logFile /tmp/unity-activation.log \
+            || true
+          echo "--- Unity log ---"
+          cat /tmp/unity-activation.log || true
+          ls -la *.alf || echo "No .alf found in current dir"
+          ls -la /root/*.alf 2>/dev/null || true
+          find / -name "*.alf" 2>/dev/null | head -20
 
       - name: Upload activation file as artifact
         uses: actions/upload-artifact@v4
         with:
           name: activation-file
-          path: ${{ steps.getManualLicenseFile.outputs.filePath }}
-          retention-days: 1
+          path: "**/*.alf"
+          retention-days: 3
+          if-no-files-found: warn
