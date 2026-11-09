@@ -1,0 +1,102 @@
+name: "4 — AXEV Godot Environment"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Generate Godot 3D Scene
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout teste-3D2
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libxi6 libxrender1 libxrandr2 libxxf86vm1 \
+            libxfixes3 libxinerama1 curl ca-certificates \
+            python3 git unzip
+
+      - name: Install Blender 4.2 LTS
+        run: |
+          BLENDER_URL="https://download.blender.org/release/Blender4.2/blender-4.2.9-linux-x64.tar.xz"
+          curl -L "$BLENDER_URL" -o /tmp/blender.tar.xz
+          sudo tar -xf /tmp/blender.tar.xz -C /opt
+          sudo ln -sf /opt/blender-4.2.9-linux-x64/blender /usr/local/bin/blender
+          blender --version
+
+      - name: Install Godot 4.3 (headless)
+        run: |
+          GODOT_URL="https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip"
+          curl -L "$GODOT_URL" -o /tmp/godot.zip
+          sudo unzip -o /tmp/godot.zip -d /opt/godot
+          sudo chmod +x /opt/godot/Godot_v4.3-stable_linux.x86_64
+          sudo ln -sf /opt/godot/Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
+          godot --version || true
+
+      - name: Clone Godot Demo Projects (3D only)
+        run: |
+          git clone --depth=1 --filter=blob:none --sparse \
+            https://github.com/godotengine/godot-demo-projects.git \
+            "$GITHUB_WORKSPACE/godot-demo-projects"
+          cd "$GITHUB_WORKSPACE/godot-demo-projects"
+          git sparse-checkout set 3d || true
+
+      - name: Prepare output directory
+        run: mkdir -p "$GITHUB_WORKSPACE/output"
+
+      - name: Generate AXEV Godot Environment
+        run: |
+          python3 "$GITHUB_WORKSPACE/scripts/generate_godot_environment.py" \
+            2>&1 | tee "$GITHUB_WORKSPACE/output/generate.log"
+
+      - name: Validate outputs
+        run: |
+          echo "=== Output files ==="
+          ls -lh "$GITHUB_WORKSPACE/output/"
+
+          GLB="$GITHUB_WORKSPACE/output/AXEV_Godot_Environment.glb"
+          if [ -f "$GLB" ]; then
+            SIZE=$(stat -c%s "$GLB")
+            echo "✅ GLB exported — $SIZE bytes"
+          else
+            echo "❌ GLB not found"
+            tail -60 "$GITHUB_WORKSPACE/output/generate.log"
+            exit 1
+          fi
+
+          RENDERS=$(ls "$GITHUB_WORKSPACE/output"/view_*.png 2>/dev/null | wc -l)
+          echo "✅ Renders: $RENDERS PNG(s)"
+
+          if [ -f "$GITHUB_WORKSPACE/output/report.json" ]; then
+            echo "=== Report ==="
+            cat "$GITHUB_WORKSPACE/output/report.json"
+          fi
+
+      - name: Upload AXEV-TEST-GODOT
+        uses: actions/upload-artifact@v4
+        with:
+          name: AXEV-TEST-GODOT
+          path: |
+            output/AXEV_Godot_Environment.glb
+            output/godot_project/
+            output/view_*.png
+            output/report.json
+            output/generate.log
+          retention-days: 30
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## 🎮 AXEV Godot Environment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f "$GITHUB_WORKSPACE/output/report.json" ]; then
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat "$GITHUB_WORKSPACE/output/report.json" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "**Artefact:** \`AXEV-TEST-GODOT\`" >> $GITHUB_STEP_SUMMARY
