@@ -62,41 +62,64 @@ def count_scene():
     polys = sum(len(o.data.polygons) for o in objs)
     return len(objs), polys
 
-# ── 1. install add-on ───────────────────────────────────────────────────
-log("Step 1 — installing BlenderLevelArchitect add-on")
-report["addon_zip"] = str(ADDON_ZIP) if ADDON_ZIP else "not found"
-
-if ADDON_ZIP:
-    bpy.ops.preferences.addon_install(filepath=str(ADDON_ZIP), overwrite=True)
-    bpy.ops.preferences.addon_enable(module="game_level_architect")
-    bpy.ops.wm.save_userpref()
-    log(f"  installed from {ADDON_ZIP}")
-else:
-    # fall back: try to find the installed module directly (cloned source)
-    src_py = BLA_DIR / "levelArchitect_v2.py"
-    if src_py.exists():
-        import importlib.util, sys as _sys
-        spec = importlib.util.spec_from_file_location("game_level_architect", src_py)
-        mod  = importlib.util.module_from_spec(spec)
-        _sys.modules["game_level_architect"] = mod
-        spec.loader.exec_module(mod)
-        log("  loaded source directly (no zip)")
-    else:
-        log("  WARNING: add-on not found — will generate a fallback scene")
-
-# ── 2. fresh scene ──────────────────────────────────────────────────────
-log("Step 2 — preparing fresh scene")
+# ── 1. fresh scene FIRST (before add-on install) ────────────────────────
+# IMPORTANT: read_factory_settings resets all add-ons, so we must
+# do it BEFORE installing, not after.
+log("Step 1 — preparing fresh scene")
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 scene.name = "AXEV_Medieval"
 
+# ── 2. install add-on (after factory reset) ─────────────────────────────
+log("Step 2 — installing BlenderLevelArchitect add-on")
+report["addon_zip"] = str(ADDON_ZIP) if ADDON_ZIP else "not found"
+
+addon_ok = False
+
+if ADDON_ZIP:
+    try:
+        bpy.ops.preferences.addon_install(filepath=str(ADDON_ZIP), overwrite=True)
+        # The zip may package the module under different names; try both.
+        for module_name in ("game_level_architect", "levelArchitect_v2", "BlenderLevelArchitect"):
+            if module_name in bpy.context.preferences.addons:
+                addon_ok = True
+                log(f"  already enabled as '{module_name}'")
+                break
+            try:
+                bpy.ops.preferences.addon_enable(module=module_name)
+                if module_name in bpy.context.preferences.addons:
+                    addon_ok = True
+                    log(f"  enabled as '{module_name}'")
+                    break
+            except Exception:
+                continue
+        bpy.ops.wm.save_userpref()
+        if not addon_ok:
+            log("  WARNING: installed zip but could not enable any known module name")
+    except Exception as e:
+        log(f"  zip install failed: {e}")
+
+if not addon_ok:
+    # fall back: load source file directly
+    src_py = BLA_DIR / "levelArchitect_v2.py"
+    if src_py.exists():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("game_level_architect", src_py)
+        mod  = importlib.util.module_from_spec(spec)
+        sys.modules["game_level_architect"] = mod
+        try:
+            spec.loader.exec_module(mod)
+            addon_ok = True
+            log("  loaded source directly (no zip)")
+        except Exception as e:
+            log(f"  source load failed: {e}")
+    else:
+        log("  WARNING: add-on not found — will generate a fallback scene")
+
 # ── 3. generate level ───────────────────────────────────────────────────
 log("Step 3 — generating level with BlenderLevelArchitect")
 
-addon_ok = "game_level_architect" in bpy.context.preferences.addons
-
-if addon_ok:
-    # Deselect all, switch to object mode
+if addon_ok and "game_level_architect" in bpy.context.preferences.addons:
     bpy.ops.object.select_all(action="DESELECT")
 
     try:
