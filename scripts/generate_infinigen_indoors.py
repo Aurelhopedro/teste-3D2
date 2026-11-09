@@ -1,8 +1,9 @@
 """
 AXEV Medieval Settlement — Infinigen Indoors Headless Generator
-Generates a procedural medieval interior room (great hall, dungeon
-chamber, or tavern) using Infinigen Indoors or a pure-Python fallback.
-Runs inside Blender --background.
+Generates a procedural medieval interior room using Infinigen Indoors
+or a pure-Python fallback. Runs inside Blender --background.
+
+ORDER: build scene → export GLB → renders (renders are best-effort)
 """
 
 import bpy
@@ -103,8 +104,7 @@ if not infinigen_ok:
     report["method"] = "procedural_interior"
     rng = random.Random(42)
 
-    # ── Room dimensions ─────────────────────────────────────────────
-    RW, RD, RH = 10.0, 14.0, 4.5   # width, depth, height
+    RW, RD, RH = 10.0, 14.0, 4.5
 
     mat_stone  = make_material("StoneMat",  (0.50, 0.46, 0.40), roughness=0.9)
     mat_floor  = make_material("FloorMat",  (0.35, 0.30, 0.25), roughness=0.95)
@@ -121,68 +121,52 @@ if not infinigen_ok:
         obj.data.materials.append(mat)
         return obj
 
-    # Floor
-    add_box("Floor", (0, 0, 0.05), (RW, RD, 0.1), mat_floor)
+    add_box("Floor",   (0, 0, 0.05),   (RW, RD, 0.1),  mat_floor)
+    add_box("Ceiling", (0, 0, RH),     (RW, RD, 0.15), mat_stone)
+    add_box("Wall_N",  (0,  RD/2, RH/2), (RW, 0.3, RH), mat_stone)
+    add_box("Wall_S",  (0, -RD/2, RH/2), (RW, 0.3, RH), mat_stone)
+    add_box("Wall_E",  ( RW/2, 0, RH/2), (0.3, RD, RH), mat_stone)
+    add_box("Wall_W",  (-RW/2, 0, RH/2), (0.3, RD, RH), mat_stone)
 
-    # Ceiling
-    add_box("Ceiling", (0, 0, RH), (RW, RD, 0.15), mat_stone)
-
-    # Walls
-    add_box("Wall_N", (0,  RD/2, RH/2), (RW,   0.3, RH), mat_stone)
-    add_box("Wall_S", (0, -RD/2, RH/2), (RW,   0.3, RH), mat_stone)
-    add_box("Wall_E", ( RW/2, 0, RH/2), (0.3, RD,   RH), mat_stone)
-    add_box("Wall_W", (-RW/2, 0, RH/2), (0.3, RD,   RH), mat_stone)
-
-    # Columns (4 pairs along long axis)
     col_positions = [-5, -2, 1, 4]
     for i, cy in enumerate(col_positions):
         for cx in [-3.5, 3.5]:
-            bpy.ops.mesh.primitive_cylinder_add(
-                radius=0.25, depth=RH, location=(cx, cy, RH/2)
-            )
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.25, depth=RH, location=(cx, cy, RH/2))
             col = bpy.context.object
             col.name = f"Column_{i}_{int(cx)}"
             col.data.materials.append(mat_stone)
-            # column cap
-            add_box(f"ColCap_{i}_{int(cx)}", (cx, cy, RH - 0.2), (0.6, 0.6, 0.3), mat_stone)
+            add_box(f"ColCap_{i}_{int(cx)}", (cx, cy, RH-0.2), (0.6, 0.6, 0.3), mat_stone)
 
-    # Long dining table
-    add_box("Table_Top",  (0, 0, 1.0), (2.0, 7.0, 0.1), mat_wood)
+    add_box("Table_Top",  (0, 0, 1.0),       (2.0, 7.0, 0.1),   mat_wood)
     add_box("Table_Leg1", (-0.8, -3.0, 0.5), (0.15, 0.15, 1.0), mat_wood)
     add_box("Table_Leg2", ( 0.8, -3.0, 0.5), (0.15, 0.15, 1.0), mat_wood)
     add_box("Table_Leg3", (-0.8,  3.0, 0.5), (0.15, 0.15, 1.0), mat_wood)
     add_box("Table_Leg4", ( 0.8,  3.0, 0.5), (0.15, 0.15, 1.0), mat_wood)
 
-    # Benches
     for side, bx in [("L", -1.5), ("R", 1.5)]:
-        add_box(f"Bench_{side}", (bx, 0, 0.55), (0.4, 6.5, 0.1), mat_wood)
-        add_box(f"BenchLeg_{side}1", (bx, -3.0, 0.3), (0.1, 0.1, 0.6), mat_wood)
-        add_box(f"BenchLeg_{side}2", (bx,  3.0, 0.3), (0.1, 0.1, 0.6), mat_wood)
+        add_box(f"Bench_{side}",      (bx, 0, 0.55),    (0.4, 6.5, 0.1), mat_wood)
+        add_box(f"BenchLeg_{side}1",  (bx, -3.0, 0.3),  (0.1, 0.1, 0.6), mat_wood)
+        add_box(f"BenchLeg_{side}2",  (bx,  3.0, 0.3),  (0.1, 0.1, 0.6), mat_wood)
 
-    # Throne / chair at head
-    add_box("Throne_Seat", (0, 6.0, 0.6), (0.9, 0.5, 0.1), mat_wood)
-    add_box("Throne_Back", (0, 6.3, 1.2), (0.9, 0.1, 1.2), mat_wood)
-    add_box("Throne_ArmL",(-0.5, 6.0, 0.9), (0.1, 0.5, 0.1), mat_wood)
-    add_box("Throne_ArmR",( 0.5, 6.0, 0.9), (0.1, 0.5, 0.1), mat_wood)
+    add_box("Throne_Seat", (0, 6.0, 0.6),  (0.9, 0.5, 0.1), mat_wood)
+    add_box("Throne_Back", (0, 6.3, 1.2),  (0.9, 0.1, 1.2), mat_wood)
+    add_box("Throne_ArmL", (-0.5, 6.0, 0.9), (0.1, 0.5, 0.1), mat_wood)
+    add_box("Throne_ArmR", ( 0.5, 6.0, 0.9), (0.1, 0.5, 0.1), mat_wood)
 
-    # Fireplace (south wall)
     add_box("Fireplace_Base",  (0, -6.5, 0.6), (2.0, 0.5, 1.2), mat_stone)
     add_box("Fireplace_Left",  (-1.0, -6.5, 1.5), (0.2, 0.5, 1.5), mat_stone)
     add_box("Fireplace_Right", ( 1.0, -6.5, 1.5), (0.2, 0.5, 1.5), mat_stone)
-    add_box("Fireplace_Top",   (0, -6.5, 2.4),   (2.4, 0.5, 0.2), mat_stone)
-    # fire glow
+    add_box("Fireplace_Top",   (0, -6.5, 2.4), (2.4, 0.5, 0.2), mat_stone)
     bpy.ops.object.light_add(type="POINT", location=(0, -6.4, 0.5))
     fire_light = bpy.context.object
     fire_light.name = "FireLight"
     fire_light.data.energy = 80
     fire_light.data.color  = (1.0, 0.4, 0.1)
 
-    # Wall torches
-    torch_positions = [
+    for i, (tx, ty) in enumerate([
         (-4.6, -4), (-4.6, 0), (-4.6, 4),
         ( 4.6, -4), ( 4.6, 0), ( 4.6, 4),
-    ]
-    for i, (tx, ty) in enumerate(torch_positions):
+    ]):
         bpy.ops.mesh.primitive_cylinder_add(radius=0.04, depth=0.4, location=(tx, ty, 2.8))
         torch = bpy.context.object
         torch.name = f"Torch_{i}"
@@ -193,12 +177,10 @@ if not infinigen_ok:
         tl.data.energy = 25
         tl.data.color  = (1.0, 0.6, 0.2)
 
-    # Banners on columns
     for i, cy in enumerate(col_positions[:2]):
         for cx in [-3.5, 3.5]:
             add_box(f"Banner_{i}_{int(cx)}", (cx, cy, 2.8), (0.6, 0.05, 1.5), mat_banner)
 
-    # Barrel stack (corner)
     for bi, (bsx, bsy, bsz) in enumerate([
         (-4.0, -5.5, 0.4), (-3.3, -5.5, 0.4), (-4.0, -5.5, 1.2)
     ]):
@@ -207,10 +189,7 @@ if not infinigen_ok:
         barrel.name = f"Barrel_{bi}"
         barrel.data.materials.append(mat_wood)
 
-    # Iron chandelier (ceiling center)
-    bpy.ops.mesh.primitive_torus_add(
-        major_radius=1.2, minor_radius=0.06, location=(0, 0, 3.8)
-    )
+    bpy.ops.mesh.primitive_torus_add(major_radius=1.2, minor_radius=0.06, location=(0, 0, 3.8))
     chand = bpy.context.object
     chand.name = "Chandelier_Ring"
     chand.data.materials.append(mat_iron)
@@ -224,7 +203,6 @@ if not infinigen_ok:
     chand_light.data.energy = 60
     chand_light.data.color  = (1.0, 0.85, 0.6)
 
-    # Door arch (north wall)
     add_box("Door_Left",  (-0.55, 6.85, 1.2), (0.2, 0.3, 2.4), mat_stone)
     add_box("Door_Right", ( 0.55, 6.85, 1.2), (0.2, 0.3, 2.4), mat_stone)
     add_box("Door_Arch",  (0,     6.85, 2.5), (1.4, 0.3, 0.3), mat_stone)
@@ -246,23 +224,8 @@ bg = world.node_tree.nodes["Background"]
 bg.inputs[0].default_value = (0.03, 0.03, 0.05, 1)
 bg.inputs[1].default_value = 0.2
 
-# ── 6. renders ──────────────────────────────────────────────────────────
-log("Step 6 — rendering views")
-views = [
-    ("overview",   ( 12, -16, 10), (math.radians(55), 0, math.radians(40))),
-    ("closeup",    (  3,   2,  3), (math.radians(40), 0, math.radians(10))),
-    ("side_angle", (-10,   5,  5), (math.radians(50), 0, math.radians(-35))),
-]
-render_paths = []
-for name, loc, rot in views:
-    set_camera(loc, rot)
-    out = OUTPUT_DIR / f"view_{name}.png"
-    render_png(out)
-    render_paths.append(str(out))
-report["renders"] = render_paths
-
-# ── 7. export GLB ────────────────────────────────────────────────────────
-log("Step 7 — exporting GLB")
+# ── 6. export GLB ── BEFORE renders so GLB always exists ────────────────
+log("Step 6 — exporting GLB")
 glb_path = str(OUTPUT_DIR / "AXEV_Infinigen_Indoors.glb")
 bpy.ops.export_scene.gltf(
     filepath=glb_path,
@@ -275,6 +238,24 @@ glb_size = os.path.getsize(glb_path)
 report["glb_path"]    = glb_path
 report["glb_size_kb"] = round(glb_size / 1024, 1)
 log(f"  exported → {glb_path} ({report['glb_size_kb']} KB)")
+
+# ── 7. renders (best-effort — won't abort the job if they fail) ──────────
+log("Step 7 — rendering views")
+views = [
+    ("overview",   ( 12, -16, 10), (math.radians(55), 0, math.radians(40))),
+    ("closeup",    (  3,   2,  3), (math.radians(40), 0, math.radians(10))),
+    ("side_angle", (-10,   5,  5), (math.radians(50), 0, math.radians(-35))),
+]
+render_paths = []
+for name, loc, rot in views:
+    try:
+        set_camera(loc, rot)
+        out = OUTPUT_DIR / f"view_{name}.png"
+        render_png(out)
+        render_paths.append(str(out))
+    except Exception as e:
+        log(f"  render '{name}' failed (non-fatal): {e}")
+report["renders"] = render_paths
 
 # ── 8. final report ──────────────────────────────────────────────────────
 save_report({
