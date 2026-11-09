@@ -1,20 +1,21 @@
-name: "Unity — Step 0: Get Activation File"
+name: "Unity — Step 0: Verify Activation"
 
 # ─────────────────────────────────────────────────────────────────────────
 # PURPOSE
-# Run this workflow FIRST, before "unity-first-launch.yml".
-# It generates a .alf file using the Unity Editor directly.
+# Verify that Unity can be activated using your credentials.
+# The old .alf / .ulf manual method is deprecated for Personal licenses.
+# The current method uses UNITY_EMAIL + UNITY_PASSWORD directly.
+#
+# PRE-REQUISITES
+# Add these 2 secrets in: Settings → Secrets → Actions
+#
+#   UNITY_EMAIL     → email da tua conta Unity
+#   UNITY_PASSWORD  → password da tua conta Unity
 #
 # HOW TO USE
-# 1. Run this workflow manually (workflow_dispatch).
-# 2. Download the artifact "activation-file" — extract the .alf file.
-# 3. Go to https://license.unity3d.com and upload the .alf file.
-# 4. Download the .ulf file they give you.
-# 5. In your GitHub repo → Settings → Secrets → Actions, create:
-#      UNITY_LICENSE   = paste the full contents of the .ulf file
-#      UNITY_EMAIL     = your Unity account email
-#      UNITY_PASSWORD  = your Unity account password
-# 6. Now run "unity-first-launch.yml".
+# 1. Add the secrets above.
+# 2. Run this workflow manually (workflow_dispatch).
+# 3. If it shows ✅ SUCCESS — activation works. Proceed to Test 01.
 # ─────────────────────────────────────────────────────────────────────────
 
 on:
@@ -24,34 +25,32 @@ env:
   UNITY_VERSION: 2022.3.57f1
 
 jobs:
-  activation:
-    name: Request activation file (.alf)
+  verify-activation:
+    name: Verify Unity Activation
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Install Unity Editor
-        uses: game-ci/unity-activate@v2
-        id: unity
-        with:
-          unityVersion: ${{ env.UNITY_VERSION }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Generate activation file (.alf)
+      - name: Write minimal Unity project fixture
         run: |
-          /opt/unity/editors/${{ env.UNITY_VERSION }}/Editor/Unity \
-            -batchmode \
-            -createManualActivationFile \
-            -logFile /tmp/unity-activation.log \
-            || true
-          echo "--- Unity log ---"
-          cat /tmp/unity-activation.log || true
-          ls -la *.alf || echo "No .alf found in current dir"
-          ls -la /root/*.alf 2>/dev/null || true
-          find / -name "*.alf" 2>/dev/null | head -20
+          mkdir -p TestProject/ProjectSettings
+          cat > TestProject/ProjectSettings/ProjectVersion.txt << 'EOF'
+          m_EditorVersion: 2022.3.57f1
+          m_EditorVersionWithRevision: 2022.3.57f1 (0)
+          EOF
 
-      - name: Upload activation file as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: activation-file
-          path: "**/*.alf"
-          retention-days: 3
-          if-no-files-found: warn
+      - name: Activate Unity (Personal License)
+        uses: game-ci/unity-activate@v2
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Report result
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════╗"
+          echo "║   ✅  SUCCESS — Unity activation OK      ║"
+          echo "║   Proceed to: unity-first-launch.yml     ║"
+          echo "╚══════════════════════════════════════════╝"
