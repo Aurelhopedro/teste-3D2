@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     name: Generate Medieval Interior
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 40
 
     steps:
@@ -18,8 +18,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             xvfb libxi6 libxrender1 libxrandr2 libxxf86vm1 \
-            libxfixes3 libxinerama1 curl ca-certificates \
-            python3-pip git
+            libxfixes3 libxinerama1 libxkbcommon0 libdbus-1-3 \
+            libasound2 libegl1 libgl1-mesa-dri libglu1-mesa \
+            libglx-mesa0 curl ca-certificates python3-pip git
 
       - name: Install Blender 4.2 LTS
         run: |
@@ -44,6 +45,9 @@ jobs:
 
       - name: Generate AXEV Interior
         run: |
+          Xvfb :99 -screen 0 1280x720x24 &
+          export DISPLAY=:99
+          export LIBGL_ALWAYS_SOFTWARE=1
           blender \
             --background \
             --factory-startup \
