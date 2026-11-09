@@ -1,0 +1,109 @@
+name: "6 — AXEV Arnis OSM World"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Generate OSM Medieval World
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout teste-3D2
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            curl ca-certificates python3 git \
+            libxi6 libxrender1 libxrandr2 libxxf86vm1 \
+            libxfixes3 libxinerama1 \
+            build-essential pkg-config libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Blender 4.2 LTS
+        run: |
+          BLENDER_URL="https://download.blender.org/release/Blender4.2/blender-4.2.9-linux-x64.tar.xz"
+          curl -L "$BLENDER_URL" -o /tmp/blender.tar.xz
+          sudo tar -xf /tmp/blender.tar.xz -C /opt
+          sudo ln -sf /opt/blender-4.2.9-linux-x64/blender /usr/local/bin/blender
+          blender --version
+
+      - name: Clone Arnis
+        run: |
+          git clone --depth=1 https://github.com/louis-e/arnis.git \
+            "$GITHUB_WORKSPACE/arnis"
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ github.workspace }}/arnis/target
+          key: arnis-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: arnis-rust-
+
+      - name: Build Arnis (headless, no GUI)
+        working-directory: ${{ github.workspace }}/arnis
+        run: |
+          cargo build --release --no-default-features 2>&1 | tail -20
+          ls -lh target/release/arnis || true
+
+      - name: Prepare output directory
+        run: mkdir -p "$GITHUB_WORKSPACE/output"
+
+      - name: Generate AXEV Arnis World
+        run: |
+          python3 "$GITHUB_WORKSPACE/scripts/generate_arnis.py" \
+            2>&1 | tee "$GITHUB_WORKSPACE/output/generate.log"
+
+      - name: Validate outputs
+        run: |
+          echo "=== Output files ==="
+          ls -lh "$GITHUB_WORKSPACE/output/"
+
+          GLB="$GITHUB_WORKSPACE/output/AXEV_Arnis.glb"
+          if [ -f "$GLB" ]; then
+            SIZE=$(stat -c%s "$GLB")
+            echo "✅ GLB exported — $SIZE bytes"
+          else
+            echo "❌ GLB not found"
+            tail -60 "$GITHUB_WORKSPACE/output/generate.log"
+            exit 1
+          fi
+
+          RENDERS=$(ls "$GITHUB_WORKSPACE/output"/view_*.png 2>/dev/null | wc -l)
+          echo "✅ Renders: $RENDERS PNG(s)"
+
+          if [ -f "$GITHUB_WORKSPACE/output/report.json" ]; then
+            echo "=== Report ==="
+            cat "$GITHUB_WORKSPACE/output/report.json"
+          fi
+
+      - name: Upload AXEV-TEST-ARNIS
+        uses: actions/upload-artifact@v4
+        with:
+          name: AXEV-TEST-ARNIS
+          path: |
+            output/AXEV_Arnis.glb
+            output/view_*.png
+            output/report.json
+            output/generate.log
+          retention-days: 30
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## 🗺️ AXEV Arnis OSM World" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f "$GITHUB_WORKSPACE/output/report.json" ]; then
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat "$GITHUB_WORKSPACE/output/report.json" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "**Artefact:** \`AXEV-TEST-ARNIS\`" >> $GITHUB_STEP_SUMMARY
