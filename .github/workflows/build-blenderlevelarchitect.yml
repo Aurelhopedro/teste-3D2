@@ -1,0 +1,115 @@
+name: "1 — AXEV BlenderLevelArchitect"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Generate Medieval Level
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── 1. repo ────────────────────────────────────────────────────────
+      - name: Checkout teste-3D2
+        uses: actions/checkout@v4
+
+      # ── 2. clone BlenderLevelArchitect ─────────────────────────────────
+      - name: Clone BlenderLevelArchitect
+        run: |
+          git clone --depth=1 https://github.com/dottyboy/BlenderLevelArchitect.git \
+            "$GITHUB_WORKSPACE/BlenderLevelArchitect"
+
+      # ── 3. install Blender 4.2 LTS ────────────────────────────────────
+      - name: Install Blender 4.2 LTS (headless)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libxi6 libgconf-2-4 libxrender1 libxrandr2 \
+            libxxf86vm1 libxfixes3 libxinerama1 \
+            curl ca-certificates
+
+          BLENDER_URL="https://download.blender.org/release/Blender4.2/blender-4.2.9-linux-x64.tar.xz"
+          curl -L "$BLENDER_URL" -o /tmp/blender.tar.xz
+          sudo tar -xf /tmp/blender.tar.xz -C /opt
+          sudo ln -sf /opt/blender-4.2.9-linux-x64/blender /usr/local/bin/blender
+          blender --version
+
+      # ── 4. build add-on zip (if not already in dist/) ─────────────────
+      - name: Build add-on zip
+        working-directory: ${{ github.workspace }}/BlenderLevelArchitect
+        run: |
+          if ls dist/*.zip 1>/dev/null 2>&1; then
+            echo "zip already in dist/"
+            ls -lh dist/
+          else
+            echo "building zip from source"
+            mkdir -p dist
+            zip -r dist/game_level_architect.zip \
+              levelArchitect_v2.py Textures/ \
+              -x "*.pyc" -x "__pycache__/*"
+            ls -lh dist/
+          fi
+
+      # ── 5. create output dir ─────────────────────────────────────────
+      - name: Prepare output directory
+        run: mkdir -p "$GITHUB_WORKSPACE/output"
+
+      # ── 6. run Blender headless ───────────────────────────────────────
+      - name: Generate AXEV Medieval Level
+        run: |
+          blender \
+            --background \
+            --factory-startup \
+            --python "$GITHUB_WORKSPACE/scripts/generate_blenderlevelarchitect.py" \
+            -- 2>&1 | tee "$GITHUB_WORKSPACE/output/blender.log"
+
+      # ── 7. validate outputs ──────────────────────────────────────────
+      - name: Validate outputs
+        run: |
+          echo "=== Output files ==="
+          ls -lh "$GITHUB_WORKSPACE/output/"
+
+          GLB="$GITHUB_WORKSPACE/output/AXEV_BlenderLevelArchitect.glb"
+          if [ -f "$GLB" ]; then
+            SIZE=$(stat -c%s "$GLB")
+            echo "✅ GLB exported — $SIZE bytes"
+          else
+            echo "❌ GLB not found"
+            cat "$GITHUB_WORKSPACE/output/blender.log" | tail -50
+            exit 1
+          fi
+
+          RENDERS=$(ls "$GITHUB_WORKSPACE/output"/view_*.png 2>/dev/null | wc -l)
+          echo "✅ Renders: $RENDERS PNG(s)"
+
+          if [ -f "$GITHUB_WORKSPACE/output/report.json" ]; then
+            echo "=== Report ==="
+            cat "$GITHUB_WORKSPACE/output/report.json"
+          fi
+
+      # ── 8. upload artefact ───────────────────────────────────────────
+      - name: Upload AXEV-TEST-BLENDERLEVELARCHITECT
+        uses: actions/upload-artifact@v4
+        with:
+          name: AXEV-TEST-BLENDERLEVELARCHITECT
+          path: |
+            output/AXEV_BlenderLevelArchitect.glb
+            output/view_*.png
+            output/report.json
+            output/blender.log
+          retention-days: 30
+
+      # ── 9. summary ───────────────────────────────────────────────────
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## 🏰 AXEV BlenderLevelArchitect" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f "$GITHUB_WORKSPACE/output/report.json" ]; then
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat "$GITHUB_WORKSPACE/output/report.json" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Artefact:** \`AXEV-TEST-BLENDERLEVELARCHITECT\`" >> $GITHUB_STEP_SUMMARY
