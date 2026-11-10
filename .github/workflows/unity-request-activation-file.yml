@@ -7,24 +7,21 @@ jobs:
   request-activation-file:
     name: Request Activation File
     runs-on: ubuntu-latest
+    container:
+      image: unityci/editor:ubuntu-6000.0.23f1-base-3
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Unity Editor
-        run: |
-          wget -q https://download.unity3d.com/download_unity/installers/UnitySetup-6000.0.23f1
-          chmod +x UnitySetup-6000.0.23f1
-          echo "y" | ./UnitySetup-6000.0.23f1 --unattended --install-location /opt/Unity
-
       - name: Generate .alf activation file
         run: |
-          /opt/Unity/Editor/Unity \
+          xvfb-run --auto-servernum unity-editor \
             -batchmode \
             -createManualActivationFile \
             -logfile /tmp/unity.log || true
+          echo "=== Unity Log ===" 
           cat /tmp/unity.log || true
-          ls -la *.alf || echo "No .alf found in current dir"
-          find / -name "*.alf" 2>/dev/null || echo "No .alf found anywhere"
+          echo "=== Looking for .alf ==="
+          find / -name "*.alf" 2>/dev/null | head -20
 
       - name: Upload .alf file
         uses: actions/upload-artifact@v4
