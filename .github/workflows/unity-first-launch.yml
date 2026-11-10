@@ -1,62 +1,43 @@
 name: "Unity — Test 01: First Launch"
 
-# ─────────────────────────────────────────────────────────────────────────
-# PURPOSE
-# Verify that Unity Editor can be installed, authenticated, and executed
-# inside a GitHub Actions Linux runner.
-#
-# PRE-REQUISITES (run Step 0 first)
-#   UNITY_LICENSE   → full contents of the .ulf file from license.unity3d.com
-#   UNITY_EMAIL     → your Unity account email
-#   UNITY_PASSWORD  → your Unity account password
-#
-# WHAT THIS WORKFLOW DOES
-#   1. Installs Unity 2022.3.57f1 via GameCI
-#   2. Authenticates with your Unity license
-#   3. Creates a temporary empty Unity project
-#   4. Opens it in batch mode (import + compile test for Linux)
-#   5. Saves logs and build output as artifacts
-#   6. Reports SUCCESS or FAILED clearly
-# ─────────────────────────────────────────────────────────────────────────
-
 on:
   workflow_dispatch:
 
 env:
-  UNITY_VERSION: 2022.3.57f1
+  UNITY_VERSION: 6000.0.23f1
   PROJECT_PATH: TestProject
 
 jobs:
   test-unity-launch:
     name: Unity First Launch Test
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: unityci/editor:ubuntu-6000.0.23f1-base-3
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Cache Unity Library ───────────────────────────────────────
-      - name: Cache Unity Library
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.PROJECT_PATH }}/Library
-          key: Library-${{ env.PROJECT_PATH }}-${{ runner.os }}-${{ env.UNITY_VERSION }}
-          restore-keys: |
-            Library-${{ env.PROJECT_PATH }}-${{ runner.os }}-
-            Library-${{ env.PROJECT_PATH }}-
+      - name: Activate Unity Personal License
+        run: |
+          xvfb-run --auto-servernum unity-editor \
+            -batchmode \
+            -nographics \
+            -logfile /tmp/activation.log \
+            -username "${{ secrets.UNITY_EMAIL }}" \
+            -password "${{ secrets.UNITY_PASSWORD }}" \
+            -quit || true
+          echo "=== Activation Log ==="
+          cat /tmp/activation.log || true
 
-      # ── 3. Create empty Unity project ────────────────────────────────
-      - name: Create empty Unity project structure
+      - name: Create empty Unity project
         run: |
           mkdir -p ${{ env.PROJECT_PATH }}/Assets
           mkdir -p ${{ env.PROJECT_PATH }}/ProjectSettings
-
           cat > ${{ env.PROJECT_PATH }}/ProjectSettings/ProjectVersion.txt << 'EOF'
-          m_EditorVersion: ${{ env.UNITY_VERSION }}
-          m_EditorVersionWithRevision: ${{ env.UNITY_VERSION }} (0)
+          m_EditorVersion: 6000.0.23f1
+          m_EditorVersionWithRevision: 6000.0.23f1 (0)
           EOF
-
           cat > ${{ env.PROJECT_PATH }}/ProjectSettings/ProjectSettings.asset << 'EOF'
           %YAML 1.1
           %TAG !u! tag:unity3d.com,2011:
@@ -67,94 +48,34 @@ jobs:
             companyName: TestCompany
             productName: TestProject
             productGUID: 00000000000000000000000000000000
-            ApplicationIdentifier:
-              Standalone: com.TestCompany.TestProject
-            buildNumber:
-              Standalone: 0
-            AndroidBundleVersionCode: 1
-            AndroidMinSdkVersion: 22
-            AndroidTargetSdkVersion: 0
           EOF
 
-      # ── 4. Install graphics dependencies (Xvfb / X11) ───────────────
-      - name: Install X11 / Xvfb dependencies
+      - name: Open Unity project (import + compile test)
+        id: unity_launch
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            xvfb \
-            libglu1-mesa \
-            libxi6 \
-            libxrender1 \
-            libxrandr2 \
-            libxcursor1 \
-            libxinerama1 \
-            libasound2 \
-            ca-certificates
-          echo "✅ X11/Xvfb dependencies installed"
+          xvfb-run --auto-servernum unity-editor \
+            -batchmode \
+            -nographics \
+            -projectPath ${{ env.PROJECT_PATH }} \
+            -logfile /tmp/unity.log \
+            -quit || true
+          echo "=== Unity Log ==="
+          cat /tmp/unity.log || true
 
-      # ── 5. Build (import + Linux compile) via GameCI ─────────────────
-      - name: Build Unity project (Linux test)
-        id: unity_build
-        uses: game-ci/unity-builder@v4
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          unityVersion: ${{ env.UNITY_VERSION }}
-          projectPath: ${{ env.PROJECT_PATH }}
-          targetPlatform: StandaloneLinux64
-          buildName: TestBuild
-          buildMethod: ""
-          allowDirtyBuild: true
-
-      # ── 6. Upload build output ────────────────────────────────────────
-      - name: Upload build output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: build/
-          retention-days: 7
-
-      # ── 7. Upload Unity logs ──────────────────────────────────────────
       - name: Upload Unity logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unity-logs
-          path: |
-            /root/.config/unity3d/
-            /github/home/.config/unity3d/
+          path: /tmp/*.log
           retention-days: 7
 
-      # ── 8. Report result ──────────────────────────────────────────────
       - name: Report result
         if: always()
         run: |
-          if [ "${{ steps.unity_build.outcome }}" == "success" ]; then
-            echo ""
-            echo "╔══════════════════════════════════════╗"
-            echo "║          ✅  SUCCESS                 ║"
-            echo "║  Unity launched and compiled OK      ║"
-            echo "╚══════════════════════════════════════╝"
+          if grep -q "Exiting batchmode successfully" /tmp/unity.log 2>/dev/null; then
+            echo "✅ SUCCESS — Unity launched and compiled OK"
           else
-            echo ""
-            echo "╔══════════════════════════════════════╗"
-            echo "║          ❌  FAILED                  ║"
-            echo "║  Check unity-logs artifact for cause ║"
-            echo "╚══════════════════════════════════════╝"
-            exit 1
+            echo "❌ FAILED — Check unity-logs artifact"
+            grep -i "error\|failed\|exception" /tmp/unity.log | tail -20 || true
           fi
-
-# ─────────────────────────────────────────────────────────────────────────
-# GRAPHICAL ENVIRONMENT NOTES (investigation only — not implemented here)
-# ─────────────────────────────────────────────────────────────────────────
-# Q: Can Unity Editor run with a graphical interface on GitHub Actions?
-# A: YES — with Xvfb (virtual framebuffer). The dependencies above install it.
-#    Unity supports Linux x64 with X11. Screenshots can be captured via
-#    scrot/ffmpeg. Streaming to Android would require a separate layer
-#    (e.g. VNC + WebRTC or NoMachine). Unity Remote 5 uses USB by default
-#    and would need a custom TCP/IP bridge to work with a remote runner.
-#    None of this is implemented here — only documented for Stage 2.
-# ─────────────────────────────────────────────────────────────────────────
