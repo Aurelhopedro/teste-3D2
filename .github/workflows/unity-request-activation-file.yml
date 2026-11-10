@@ -10,24 +10,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install unity-license-activate
-        run: npm install -g unity-license-activate
-
-      - name: Request activation file
+      - name: Install Unity Editor
         run: |
-          unity-license-activate \
-            --email "${{ secrets.UNITY_EMAIL }}" \
-            --password "${{ secrets.UNITY_PASSWORD }}" \
-            --alf Unity.alf
-        continue-on-error: true
+          wget -q https://download.unity3d.com/download_unity/installers/UnitySetup-6000.0.23f1
+          chmod +x UnitySetup-6000.0.23f1
+          echo "y" | ./UnitySetup-6000.0.23f1 --unattended --install-location /opt/Unity
+
+      - name: Generate .alf activation file
+        run: |
+          /opt/Unity/Editor/Unity \
+            -batchmode \
+            -createManualActivationFile \
+            -logfile /tmp/unity.log || true
+          cat /tmp/unity.log || true
+          ls -la *.alf || echo "No .alf found in current dir"
+          find / -name "*.alf" 2>/dev/null || echo "No .alf found anywhere"
 
       - name: Upload .alf file
         uses: actions/upload-artifact@v4
         with:
           name: activation-file
-          path: "*.alf"
+          path: "**/*.alf"
+          if-no-files-found: warn
