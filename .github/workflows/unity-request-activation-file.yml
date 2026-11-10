@@ -10,17 +10,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: game-ci/unity-activate@v4
-        id: activation
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          unityVersion: 6000.0.23f1
-          unityLicensingServer: ''
-        env:
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          node-version: '18'
 
-      - name: Upload activation file
+      - name: Install unity-license-activate
+        run: npm install -g unity-license-activate
+
+      - name: Request activation file
+        run: |
+          unity-license-activate \
+            --email "${{ secrets.UNITY_EMAIL }}" \
+            --password "${{ secrets.UNITY_PASSWORD }}" \
+            --alf Unity.alf
+        continue-on-error: true
+
+      - name: Upload .alf file
         uses: actions/upload-artifact@v4
         with:
           name: activation-file
-          path: ${{ steps.activation.outputs.licensePath }}
+          path: "*.alf"
