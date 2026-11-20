@@ -1,0 +1,87 @@
+name: "Unity — Test License Personal"
+
+on:
+  workflow_dispatch:
+
+env:
+  UNITY_VERSION: 6000.0.23f1
+
+jobs:
+  test-license:
+    name: Test Unity Personal License
+    runs-on: ubuntu-latest
+    container:
+      image: unityci/editor:ubuntu-6000.0.23f1-base-3
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Activate Unity Personal License
+        uses: RageAgainstThePixel/activate-unity-license@v2
+        with:
+          license: 'Personal'
+          username: ${{ secrets.UNITY_EMAIL }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Create minimal Unity project
+        run: |
+          mkdir -p TestProject/Assets
+          mkdir -p TestProject/ProjectSettings
+          cat > TestProject/ProjectSettings/ProjectVersion.txt << 'EOF'
+          m_EditorVersion: 6000.0.23f1
+          m_EditorVersionWithRevision: 6000.0.23f1 (0)
+          EOF
+          cat > TestProject/ProjectSettings/ProjectSettings.asset << 'EOF'
+          %YAML 1.1
+          %TAG !u! tag:unity3d.com,2011:
+          --- !u!129 &1
+          PlayerSettings:
+            m_ObjectHideFlags: 0
+            serializedVersion: 23
+            companyName: TestCompany
+            productName: TestProject
+            productGUID: 00000000000000000000000000000000
+          EOF
+
+      - name: Run Unity with license
+        run: |
+          xvfb-run --auto-servernum unity-editor \
+            -batchmode \
+            -nographics \
+            -projectPath TestProject \
+            -logfile /tmp/unity-license-test.log \
+            -quit || true
+          echo "=== Unity Log (últimas 60 linhas) ==="
+          tail -60 /tmp/unity-license-test.log || true
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-license-test-logs
+          path: /tmp/*.log
+          retention-days: 7
+
+      - name: Verificar resultado
+        if: always()
+        run: |
+          if grep -q "Exiting batchmode successfully" /tmp/unity-license-test.log 2>/dev/null; then
+            echo ""
+            echo "╔══════════════════════════════════════════╗"
+            echo "║   ✅  LICENÇA OK — Unity activado!       ║"
+            echo "║   Podes avançar para o build WebGL       ║"
+            echo "╚══════════════════════════════════════════╝"
+          elif grep -qi "license" /tmp/unity-license-test.log 2>/dev/null; then
+            echo ""
+            echo "╔══════════════════════════════════════════╗"
+            echo "║   ⚠️  PROBLEMA COM LICENÇA               ║"
+            echo "║   Verifica UNITY_EMAIL e UNITY_PASSWORD  ║"
+            echo "╚══════════════════════════════════════════╝"
+            grep -i "license\|error\|failed" /tmp/unity-license-test.log | tail -20
+          else
+            echo ""
+            echo "╔══════════════════════════════════════════╗"
+            echo "║   ❌  FALHOU — Ver logs acima            ║"
+            echo "╚══════════════════════════════════════════╝"
+          fi
