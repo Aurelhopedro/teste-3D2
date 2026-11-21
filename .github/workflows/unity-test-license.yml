@@ -21,10 +21,15 @@ jobs:
           m_EditorVersionWithRevision: 6000.0.23f1 (0)
           EOF
 
-      - name: Build Unity (teste de licença)
+      - name: Activate and test Unity license
+        uses: game-ci/unity-activate@v2
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Run Unity headless
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
@@ -33,23 +38,21 @@ jobs:
           buildTarget: StandaloneLinux64
           buildName: TestBuild
           allowDirtyBuild: true
-          customParameters: -nographics
+
+      - name: Return license
+        if: always()
+        uses: game-ci/unity-return-license@v2
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unity-license-test-logs
-          path: |
-            TestProject/Logs/
+          path: TestProject/Logs/
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Verificar resultado
+      - name: Resultado
         if: success()
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════════╗"
-          echo "║   ✅  LICENÇA OK — Unity activado!       ║"
-          echo "║   Podes avançar para o build WebGL!      ║"
-          echo "╚══════════════════════════════════════════╝"
+          echo "✅ LICENÇA OK — Unity activado com sucesso!"
