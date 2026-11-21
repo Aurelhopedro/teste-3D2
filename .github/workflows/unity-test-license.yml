@@ -21,27 +21,19 @@ jobs:
           m_EditorVersionWithRevision: 6000.0.23f1 (0)
           EOF
 
-      - name: Activate and test Unity license
-        uses: game-ci/unity-activate@v2
-        env:
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
-      - name: Run Unity headless
+      - name: Build Unity (teste de licença Personal)
         uses: game-ci/unity-builder@v4
         env:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
         with:
           unityVersion: 6000.0.23f1
           projectPath: TestProject
           buildTarget: StandaloneLinux64
           buildName: TestBuild
           allowDirtyBuild: true
-
-      - name: Return license
-        if: always()
-        uses: game-ci/unity-return-license@v2
+          versioning: None
 
       - name: Upload logs
         if: always()
@@ -55,4 +47,5 @@ jobs:
       - name: Resultado
         if: success()
         run: |
-          echo "✅ LICENÇA OK — Unity activado com sucesso!"
+          echo ""
+          echo "✅ LICENÇA OK — Unity Personal activado com sucesso!"
