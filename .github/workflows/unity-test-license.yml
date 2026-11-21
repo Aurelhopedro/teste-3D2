@@ -12,13 +12,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache Unity Library
-        uses: actions/cache@v4
-        with:
-          path: TestProject/Library
-          key: Library-TestProject
-          restore-keys: Library-
-
       - name: Create minimal Unity project
         run: |
           mkdir -p TestProject/Assets
@@ -26,17 +19,6 @@ jobs:
           cat > TestProject/ProjectSettings/ProjectVersion.txt << 'EOF'
           m_EditorVersion: 6000.0.23f1
           m_EditorVersionWithRevision: 6000.0.23f1 (0)
-          EOF
-          cat > TestProject/ProjectSettings/ProjectSettings.asset << 'EOF'
-          %YAML 1.1
-          %TAG !u! tag:unity3d.com,2011:
-          --- !u!129 &1
-          PlayerSettings:
-            m_ObjectHideFlags: 0
-            serializedVersion: 23
-            companyName: TestCompany
-            productName: TestProject
-            productGUID: 00000000000000000000000000000000
           EOF
 
       - name: Build Unity (teste de licença)
@@ -51,6 +33,7 @@ jobs:
           buildTarget: StandaloneLinux64
           buildName: TestBuild
           allowDirtyBuild: true
+          customParameters: -nographics
 
       - name: Upload logs
         if: always()
@@ -59,12 +42,14 @@ jobs:
           name: unity-license-test-logs
           path: |
             TestProject/Logs/
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Verificar resultado
-        if: always()
+        if: success()
         run: |
           echo ""
           echo "╔══════════════════════════════════════════╗"
-          echo "║   ✅  Build concluído — Licença OK!      ║"
+          echo "║   ✅  LICENÇA OK — Unity activado!       ║"
+          echo "║   Podes avançar para o build WebGL!      ║"
           echo "╚══════════════════════════════════════════╝"
